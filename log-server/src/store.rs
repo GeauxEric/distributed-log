@@ -47,6 +47,19 @@ impl<'s> Store<'s> {
         self.file.read_exact_at(&mut b, pos + LEN_WIDTH)?;
         Ok(b)
     }
+
+    pub fn read_exact_at(&mut self, buf: &mut [u8], pos: u64) -> io::Result<()> {
+        let _l = self.mu.lock().unwrap();
+        self.buf.flush()?;
+        self.file.read_exact_at(buf, pos)
+    }
+}
+
+impl<'s> Drop for Store<'s> {
+    fn drop(&mut self) {
+        let _l = self.mu.lock().unwrap();
+        self.buf.flush().expect("Store bufwriter failed to flush");
+    }
 }
 
 #[cfg(test)]
@@ -65,7 +78,12 @@ mod tests {
         assert_eq!(r.0, 11);
         assert_eq!(r.1, 0);
 
-        let r = store.read(r.1).unwrap();
-        assert_eq!(&r, &[1, 2, 3]);
+        let read = store.read(r.1).unwrap();
+        assert_eq!(&read, &[1, 2, 3]);
+
+        let mut ba = [0u8; LEN_WIDTH as usize];
+        store.read_exact_at(&mut ba, r.1).unwrap();
+        let width = u64::from_le_bytes(ba);
+        assert_eq!(width, 3);
     }
 }
