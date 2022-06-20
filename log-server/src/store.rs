@@ -6,20 +6,21 @@ use std::sync::Mutex;
 
 const LEN_WIDTH: u64 = 8;
 
-struct Store<'s> {
+pub(crate) struct Store {
     mu: Mutex<()>,
-    file: &'s File,           // read
-    buf: BufWriter<&'s File>, // write
+    file: File,           // read
+    buf: BufWriter<File>, // write
     size: u64,
 }
 
-impl<'s> Store<'s> {
-    pub fn new(file: &'s File) -> io::Result<Store<'s>> {
+impl Store {
+    pub fn new(file: File) -> io::Result<Store> {
         let m = file.metadata()?;
+        let write_fd = file.try_clone()?;
         Ok(Store {
             mu: Mutex::new(()),
             file,
-            buf: BufWriter::new(file),
+            buf: BufWriter::new(write_fd),
             size: m.len(),
         })
     }
@@ -55,7 +56,7 @@ impl<'s> Store<'s> {
     }
 }
 
-impl<'s> Drop for Store<'s> {
+impl Drop for Store {
     fn drop(&mut self) {
         let _l = self.mu.lock().unwrap();
         self.buf.flush().expect("Store bufwriter failed to flush");
@@ -70,8 +71,7 @@ mod tests {
     #[test]
     fn test_store() {
         let file = tempfile().unwrap();
-
-        let mut store = Store::new(&file).unwrap();
+        let mut store = Store::new(file).unwrap();
         let r = store.append(&[1, 2, 3]);
         assert!(r.is_ok());
         let r = r.unwrap();

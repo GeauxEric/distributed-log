@@ -5,19 +5,19 @@ use std::io::{ErrorKind, Read, Write};
 
 const OFF_WIDTH: usize = 4;
 const POS_WIDTH: usize = 8;
-const ENTRY_WIDTH: usize = OFF_WIDTH + POS_WIDTH;
+pub(crate) const ENTRY_WIDTH: usize = OFF_WIDTH + POS_WIDTH;
 
-struct Index<'i> {
-    file: &'i File,
+pub(crate) struct Index {
+    file: File,
     size: u64,
     mmap: MmapMut,
 }
 
-impl<'i> Index<'i> {
-    pub fn new(file: &'i File, config: &Config) -> std::io::Result<Self> {
+impl<'i> Index {
+    pub fn new(file: File, config: &Config) -> std::io::Result<Self> {
         let sz = file.metadata()?.len();
         file.set_len(config.segment.max_index_bytes)?;
-        let mmap = unsafe { MmapMut::map_mut(file).unwrap() };
+        let mmap = unsafe { MmapMut::map_mut(&file).unwrap() };
         Ok(Index {
             file,
             size: sz,
@@ -59,7 +59,7 @@ impl<'i> Index<'i> {
     }
 }
 
-impl<'i> Drop for Index<'i> {
+impl Drop for Index {
     fn drop(&mut self) {
         self.mmap.flush().expect("Index mmap failed to flush");
         self.file.flush().expect("Index file failed to flush");
@@ -72,19 +72,19 @@ impl<'i> Drop for Index<'i> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Segment;
+    use crate::config::SegmentConfig;
     use tempfile::tempfile;
 
     #[test]
     fn test_index() {
         let file = tempfile().unwrap();
         let config = Config {
-            segment: Segment {
+            segment: SegmentConfig {
                 max_index_bytes: 1024,
                 ..Default::default()
             },
         };
-        let mut index = Index::new(&file, &config).unwrap();
+        let mut index = Index::new(file, &config).unwrap();
         assert!(index.read(-1).is_err());
 
         struct Entry {
