@@ -13,16 +13,12 @@ pub(crate) struct Index {
     mmap: MmapMut,
 }
 
-impl<'i> Index {
+impl Index {
     pub fn new(file: File, config: &Config) -> std::io::Result<Self> {
-        let sz = file.metadata()?.len();
+        let size = file.metadata()?.len();
         file.set_len(config.segment.max_index_bytes)?;
         let mmap = unsafe { MmapMut::map_mut(&file).unwrap() };
-        Ok(Index {
-            file,
-            size: sz,
-            mmap,
-        })
+        Ok(Index { file, size, mmap })
     }
 
     pub fn write(&mut self, off: u32, pos: u64) -> std::io::Result<()> {
@@ -92,7 +88,7 @@ mod tests {
             pos: u64,
         }
 
-        for e in &vec![Entry { off: 0, pos: 0 }, Entry { off: 0, pos: 0 }] {
+        for e in &vec![Entry { off: 0, pos: 0 }, Entry { off: 1, pos: 10 }] {
             assert!(index.write(e.off, e.pos).is_ok());
 
             let t = index.read(e.off as i64).unwrap();
