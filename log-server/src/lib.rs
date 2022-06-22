@@ -2,10 +2,9 @@
 
 mod config;
 mod index;
-mod log;
 mod segment;
 mod store;
 
-pub mod proto {
+mod pb_log_v1 {
     tonic::include_proto!("log.v1");
 }

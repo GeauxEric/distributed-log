@@ -11,6 +11,8 @@ tokio = { version = "1.18", features = ["full"] }
 prost = "0.10"
 prost-types = "0.10"
 memmap = "0.7"
+bytes = "1"
+anyhow = "1"
 
 [dev-dependencies]
 tempfile = "3"

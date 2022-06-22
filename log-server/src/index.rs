@@ -26,7 +26,7 @@ impl Index {
             return Err(std::io::Error::new(ErrorKind::UnexpectedEof, ""));
         }
         let sz = self.size as usize;
-        (&mut self.mmap[sz..sz + 100]).write_all(off.to_le_bytes().as_slice())?;
+        (&mut self.mmap[sz..sz + OFF_WIDTH]).write_all(off.to_le_bytes().as_slice())?;
         (&mut self.mmap[sz + OFF_WIDTH..sz + ENTRY_WIDTH])
             .write_all(pos.to_le_bytes().as_slice())?;
         self.size += ENTRY_WIDTH as u64;
@@ -52,6 +52,14 @@ impl Index {
         (&self.mmap[pos + OFF_WIDTH..pos + ENTRY_WIDTH]).read_exact(&mut ba)?;
         let pos = u64::from_le_bytes(ba);
         Ok((out, pos))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
+
+    pub fn size(&self) -> u64 {
+        self.size
     }
 }
 
@@ -96,5 +104,9 @@ mod tests {
             assert_eq!(t.1, e.pos);
         }
         assert_eq!(index.size, 2 * ENTRY_WIDTH as u64);
+
+        let (out, pos) = index.read(-1).unwrap();
+        assert_eq!(out, 1);
+        assert_eq!(pos, 10);
     }
 }

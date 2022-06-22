@@ -54,6 +54,10 @@ impl Store {
         self.buf.flush()?;
         self.file.read_exact_at(buf, pos)
     }
+
+    pub fn size(&self) -> u64 {
+        self.size
+    }
 }
 
 impl Drop for Store {
