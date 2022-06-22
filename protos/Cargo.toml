@@ -1,16 +1,13 @@
 [package]
-name = "log-server"
+name = "protos"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-memmap = "0.7"
-bytes = "1"
-anyhow = "1"
+tonic-build = "0.7"
+tonic = "0.7"
+prost-types = "0.10"
 prost = "0.10"
-protos = { path = "../protos" }
-
-[dev-dependencies]
-tempfile = "3"
+dotenv = "0.15"

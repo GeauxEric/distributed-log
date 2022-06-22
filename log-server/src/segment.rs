@@ -1,10 +1,10 @@
 use crate::config::Config;
 use crate::index::Index;
-use crate::pb::log::v1::Record;
 use crate::store::Store;
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};
 use prost::Message;
+use protos::log::v1::Record;
 use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
