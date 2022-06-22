@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::index::Index;
-use crate::pb_log_v1::Record;
+use crate::pb::log::v1::Record;
 use crate::store::Store;
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};
