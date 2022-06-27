@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::segment::Segment;
 use anyhow::{anyhow, Result};
+use std::collections::HashSet;
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
 
@@ -47,12 +48,13 @@ impl Log {
             .map(|entry| entry.unwrap().path())
             .filter(|p| p.is_file())
             .collect();
-        let mut base_offsets = vec![];
+        let mut base_offsets = HashSet::new();
         for path in &files {
             let off_str = path.file_stem().unwrap();
             let off = off_str.to_str().unwrap().parse::<u64>().unwrap();
-            base_offsets.push(off);
+            base_offsets.insert(off);
         }
+        let mut base_offsets = Vec::from_iter(base_offsets);
         base_offsets.sort_unstable();
         for base_offset in base_offsets {
             self.new_segment(base_offset)?;
@@ -73,6 +75,9 @@ mod tests {
     #[test]
     fn it_works() -> Result<()> {
         let dir = tempdir()?;
+        let log = Log::new(dir.path(), Config::default())?;
+        assert_eq!(1, log.segments.len());
+        assert_eq!(Some(0), log.active_segment_idx);
         let log = Log::new(dir.path(), Config::default())?;
         assert_eq!(1, log.segments.len());
         assert_eq!(Some(0), log.active_segment_idx);
