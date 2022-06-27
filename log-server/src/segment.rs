@@ -9,7 +9,7 @@ use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
-struct Segment {
+pub(crate) struct Segment {
     index: Index,
     store: Store,
     base_offset: u64,
