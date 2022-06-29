@@ -1,11 +1,14 @@
 use crate::config::Config;
 use crate::segment::Segment;
 use anyhow::{anyhow, Result};
+use protos::log::v1::Record;
 use std::collections::HashSet;
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
+use std::sync;
 
 struct Log {
+    lock: sync::RwLock<()>,
     dir: PathBuf,
     config: Config,
     segments: Vec<Segment>,
@@ -25,6 +28,7 @@ impl Log {
             config.segment.max_index_bytes = 1024;
         }
         let mut log = Log {
+            lock: sync::RwLock::new(()),
             dir: dir.into(),
             config,
             segments: vec![],
@@ -35,10 +39,28 @@ impl Log {
     }
 
     fn new_segment(&mut self, off: u64) -> Result<()> {
+        let _m = self.lock.write().unwrap();
         let s = Segment::new(&self.dir, off, &self.config)?;
         self.segments.push(s);
         self.active_segment_idx = Some(self.segments.len() - 1);
         Ok(())
+    }
+
+    fn append(&mut self, record: &mut Record) -> Result<u64> {
+        let _l = self.lock.write().unwrap();
+        if self.active_segment_idx.is_none() {
+            return Err(anyhow!("there is not active segment"));
+        }
+        let s = self
+            .segments
+            .get_mut(self.active_segment_idx.unwrap())
+            .unwrap();
+        let offset = s.append(record)?;
+        drop(_l);
+        if s.is_maxed() {
+            self.new_segment(offset + 1)?;
+        }
+        Ok(offset)
     }
 
     fn setup(&mut self) -> Result<()> {
