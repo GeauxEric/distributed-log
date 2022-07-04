@@ -1,4 +1,5 @@
 use crate::config::Config;
+use log::debug;
 use memmap::MmapMut;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
@@ -22,8 +23,13 @@ impl Index {
     }
 
     pub fn write(&mut self, off: u32, pos: u64) -> std::io::Result<()> {
-        if self.mmap.len() < (self.size + ENTRY_WIDTH as u64) as usize {
-            return Err(std::io::Error::new(ErrorKind::UnexpectedEof, ""));
+        let s = self.size + ENTRY_WIDTH as u64;
+        let mmap_len = self.mmap.len();
+        if mmap_len < s as usize {
+            return Err(std::io::Error::new(
+                ErrorKind::UnexpectedEof,
+                format!("mmap length {} is less than {}", mmap_len, s),
+            ));
         }
         let sz = self.size as usize;
         (&mut self.mmap[sz..sz + OFF_WIDTH]).write_all(off.to_le_bytes().as_slice())?;
@@ -67,6 +73,7 @@ impl Drop for Index {
     fn drop(&mut self) {
         self.mmap.flush().expect("Index mmap failed to flush");
         self.file.flush().expect("Index file failed to flush");
+        debug!("dropping index file and truncate to size={}", self.size);
         self.file
             .set_len(self.size)
             .expect("Index file failed to truncate");

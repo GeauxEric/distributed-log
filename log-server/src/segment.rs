@@ -1,8 +1,10 @@
 use crate::config::Config;
 use crate::index::Index;
 use crate::store::Store;
+use anyhow::Context;
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};
+use log::debug;
 use prost::Message;
 use protos::log::v1::Record;
 use std::io;
@@ -12,8 +14,8 @@ use std::path::Path;
 pub(crate) struct Segment {
     index: Index,
     store: Store,
-    base_offset: u64,
-    next_offset: u64,
+    pub base_offset: u64,
+    pub next_offset: u64,
     config: Config,
 }
 
@@ -35,6 +37,7 @@ impl Segment {
             .mode(0o644)
             .open(dir.join(format!("{}{}", base_offset, ".index")))?;
         let index = Index::new(index_file, c)?;
+        debug!("index_size={}", index.size());
         let next_offset = {
             if index.is_empty() {
                 base_offset
@@ -54,16 +57,27 @@ impl Segment {
 
     pub fn append(&mut self, record: &mut Record) -> Result<u64> {
         let mut b = BytesMut::new();
-        record.encode(&mut b)?;
+        record.encode(&mut b).with_context(|| "failed to encode")?;
         let cur = self.next_offset;
         record.offset = cur;
-        let (_, pos) = self.store.append(&b)?;
-        self.index.write((cur - self.base_offset) as u32, pos)?;
+        let (_, pos) = self
+            .store
+            .append(&b)
+            .with_context(|| "failed to append to store")?;
+        self.index
+            .write((cur - self.base_offset) as u32, pos)
+            .with_context(|| {
+                format!(
+                    "failed to write index with off = {}, pose = {}",
+                    cur - self.base_offset,
+                    pos
+                )
+            })?;
         self.next_offset += 1;
         Ok(cur)
     }
 
-    pub fn read(&mut self, offset: u64) -> Result<Record> {
+    pub fn read(&self, offset: u64) -> Result<Record> {
         let (_, pos) = self.index.read((offset - self.base_offset) as i64)?;
         let payload = self.store.read(pos)?;
         let b: Bytes = payload.into();

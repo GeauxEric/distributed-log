@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fs::File;
 use std::io;
 use std::io::{BufWriter, Write};
@@ -8,8 +9,8 @@ const LEN_WIDTH: u64 = 8;
 
 pub(crate) struct Store {
     mu: Mutex<()>,
-    file: File,           // read
-    buf: BufWriter<File>, // write
+    file: File,                    // read
+    buf: RefCell<BufWriter<File>>, // write
     size: u64,
 }
 
@@ -20,7 +21,7 @@ impl Store {
         Ok(Store {
             mu: Mutex::new(()),
             file,
-            buf: BufWriter::new(write_fd),
+            buf: RefCell::new(BufWriter::new(write_fd)),
             size: m.len(),
         })
     }
@@ -30,16 +31,16 @@ impl Store {
         let pos = self.size;
         let b = (p.len() as u64).to_le_bytes() as [u8; LEN_WIDTH as usize];
         let buf = &mut self.buf;
-        buf.write_all(&b)?;
-        let mut w = buf.write(p)? as u64;
+        buf.borrow_mut().write_all(&b)?;
+        let mut w = buf.borrow_mut().write(p)? as u64;
         w += LEN_WIDTH;
         self.size += w;
         Ok((w, pos))
     }
 
-    pub fn read(&mut self, pos: u64) -> io::Result<Vec<u8>> {
+    pub fn read(&self, pos: u64) -> io::Result<Vec<u8>> {
         let _l = self.mu.lock().unwrap();
-        self.buf.flush()?;
+        self.buf.borrow_mut().flush()?;
 
         let mut b = [0u8; LEN_WIDTH as usize];
         self.file.read_exact_at(&mut b, pos)?;
@@ -51,7 +52,7 @@ impl Store {
 
     pub fn read_exact_at(&mut self, buf: &mut [u8], pos: u64) -> io::Result<()> {
         let _l = self.mu.lock().unwrap();
-        self.buf.flush()?;
+        self.buf.borrow_mut().flush()?;
         self.file.read_exact_at(buf, pos)
     }
 
@@ -63,7 +64,10 @@ impl Store {
 impl Drop for Store {
     fn drop(&mut self) {
         let _l = self.mu.lock().unwrap();
-        self.buf.flush().expect("Store bufwriter failed to flush");
+        self.buf
+            .borrow_mut()
+            .flush()
+            .expect("Store bufwriter failed to flush");
     }
 }
 

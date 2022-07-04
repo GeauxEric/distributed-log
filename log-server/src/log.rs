@@ -1,11 +1,15 @@
-use crate::config::Config;
-use crate::segment::Segment;
-use anyhow::{anyhow, Result};
-use protos::log::v1::Record;
 use std::collections::HashSet;
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
 use std::sync;
+
+use anyhow::{anyhow, Result};
+use log::debug;
+
+use protos::log::v1::Record;
+
+use crate::config::Config;
+use crate::segment::Segment;
 
 struct Log {
     lock: sync::RwLock<()>,
@@ -39,7 +43,6 @@ impl Log {
     }
 
     fn new_segment(&mut self, off: u64) -> Result<()> {
-        let _m = self.lock.write().unwrap();
         let s = Segment::new(&self.dir, off, &self.config)?;
         self.segments.push(s);
         self.active_segment_idx = Some(self.segments.len() - 1);
@@ -47,20 +50,30 @@ impl Log {
     }
 
     fn append(&mut self, record: &mut Record) -> Result<u64> {
-        let _l = self.lock.write().unwrap();
+        let _l = self.lock.get_mut().expect("failed to get mutable lock");
         if self.active_segment_idx.is_none() {
             return Err(anyhow!("there is not active segment"));
         }
         let s = self
             .segments
             .get_mut(self.active_segment_idx.unwrap())
-            .unwrap();
+            .expect("no segment at the active segment idx");
         let offset = s.append(record)?;
-        drop(_l);
         if s.is_maxed() {
-            self.new_segment(offset + 1)?;
+            self.new_segment(offset + 1)
+                .expect("error adding new segment");
         }
         Ok(offset)
+    }
+
+    fn read(&self, off: u64) -> Result<Record> {
+        let _l = self.lock.read().unwrap();
+        let s = self
+            .segments
+            .iter()
+            .find(|&s| s.base_offset <= off && s.next_offset > off)
+            .ok_or_else(|| anyhow!(format!("{} is out of range", off)))?;
+        s.read(off)
     }
 
     fn setup(&mut self) -> Result<()> {
@@ -79,9 +92,11 @@ impl Log {
         let mut base_offsets = Vec::from_iter(base_offsets);
         base_offsets.sort_unstable();
         for base_offset in base_offsets {
+            debug!("init from base_offsets={}", base_offset);
             self.new_segment(base_offset)?;
         }
         if self.segments.is_empty() {
+            debug!("create new segment");
             self.new_segment(self.config.segment.initial_offset)?;
         }
 
@@ -91,19 +106,30 @@ impl Log {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::tempdir;
+
+    use super::*;
 
     #[test]
     fn it_works() -> Result<()> {
+        let _ = env_logger::builder().is_test(true).try_init();
         let dir = tempdir()?;
         let log = Log::new(dir.path(), Config::default())?;
         assert_eq!(1, log.segments.len());
         assert_eq!(Some(0), log.active_segment_idx);
-        let log = Log::new(dir.path(), Config::default())?;
+        drop(log);
+
+        let mut log = Log::new(dir.path(), Config::default())?;
         assert_eq!(1, log.segments.len());
         assert_eq!(Some(0), log.active_segment_idx);
 
-        Ok(())
+        let mut r1 = Record {
+            value: vec![1, 2, 3],
+            ..Default::default()
+        };
+        let offset = log.append(&mut r1)?;
+        let g1 = log.read(offset)?;
+        assert_eq!(r1.value, g1.value);
+        anyhow::Ok(())
     }
 }
