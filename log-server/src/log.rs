@@ -72,8 +72,25 @@ impl Log {
             .segments
             .iter()
             .find(|&s| s.base_offset <= off && s.next_offset > off)
-            .ok_or_else(|| anyhow!(format!("{} is out of range", off)))?;
+            .ok_or_else(|| anyhow!(format!("offset={} is out of range", off)))?;
         s.read(off)
+    }
+
+    fn lowest_offset(&self) -> Result<u64> {
+        let _l = self.lock.read().unwrap();
+        let s = self
+            .segments
+            .get(0)
+            .ok_or_else(|| anyhow!("segments is empty"))?;
+        Ok(s.base_offset)
+    }
+
+    fn close(&mut self) -> Result<()> {
+        let _l = self.lock.write().unwrap();
+        for s in &mut self.segments {
+            s.close()?
+        }
+        Ok(())
     }
 
     fn setup(&mut self) -> Result<()> {
@@ -114,15 +131,23 @@ mod tests {
     fn it_works() -> Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
         let dir = tempdir()?;
-        let log = Log::new(dir.path(), Config::default())?;
+        let mut log = Log::new(dir.path(), Config::default())?;
         assert_eq!(1, log.segments.len());
         assert_eq!(Some(0), log.active_segment_idx);
-        drop(log);
+        log.close()?;
 
         let mut log = Log::new(dir.path(), Config::default())?;
         assert_eq!(1, log.segments.len());
         assert_eq!(Some(0), log.active_segment_idx);
 
+        test_append_and_read(&mut log)?;
+        test_out_of_range(&log)?;
+        test_init_existing(&mut log)?;
+
+        Ok(())
+    }
+
+    fn test_append_and_read(log: &mut Log) -> Result<()> {
         let mut r1 = Record {
             value: vec![1, 2, 3],
             ..Default::default()
@@ -130,6 +155,29 @@ mod tests {
         let offset = log.append(&mut r1)?;
         let g1 = log.read(offset)?;
         assert_eq!(r1.value, g1.value);
-        anyhow::Ok(())
+        Ok(())
+    }
+
+    fn test_out_of_range(log: &Log) -> Result<()> {
+        let r = log.read(1);
+        assert!(r.is_err());
+        assert!(r.err().unwrap().to_string().contains("out of range"));
+        Ok(())
+    }
+
+    fn test_init_existing(log: &mut Log) -> Result<()> {
+        for _i in 0..3 {
+            let mut r1 = Record {
+                value: "hello world".to_owned().into_bytes(),
+                ..Default::default()
+            };
+            log.append(&mut r1)?;
+        }
+        log.close()?;
+        let off = log.lowest_offset()?;
+        assert_eq!(0, off);
+
+        // TODO: highest offset
+        Ok(())
     }
 }

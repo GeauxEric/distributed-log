@@ -67,16 +67,19 @@ impl Index {
     pub fn size(&self) -> u64 {
         self.size
     }
+
+    pub fn close(&mut self) -> anyhow::Result<()> {
+        self.mmap.flush().expect("Index mmap failed to flush");
+        self.file.flush().expect("Index file failed to flush");
+        debug!("dropping index file and truncate to size={}", self.size);
+        self.file.set_len(self.size)?;
+        Ok(())
+    }
 }
 
 impl Drop for Index {
     fn drop(&mut self) {
-        self.mmap.flush().expect("Index mmap failed to flush");
-        self.file.flush().expect("Index file failed to flush");
-        debug!("dropping index file and truncate to size={}", self.size);
-        self.file
-            .set_len(self.size)
-            .expect("Index file failed to truncate");
+        self.close().expect("index file fail to close")
     }
 }
 

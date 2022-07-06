@@ -26,6 +26,12 @@ impl Store {
         })
     }
 
+    pub fn close(&mut self) -> anyhow::Result<()> {
+        let _l = self.mu.lock().unwrap();
+        self.buf.borrow_mut().flush()?;
+        Ok(())
+    }
+
     pub fn append(&mut self, p: &[u8]) -> io::Result<(u64, u64)> {
         let _l = self.mu.lock().unwrap();
         let pos = self.size;
@@ -63,11 +69,7 @@ impl Store {
 
 impl Drop for Store {
     fn drop(&mut self) {
-        let _l = self.mu.lock().unwrap();
-        self.buf
-            .borrow_mut()
-            .flush()
-            .expect("Store bufwriter failed to flush");
+        self.close().expect("failed to close")
     }
 }
 

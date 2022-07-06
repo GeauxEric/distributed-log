@@ -55,6 +55,12 @@ impl Segment {
         })
     }
 
+    pub fn close(&mut self) -> Result<()> {
+        self.store.close()?;
+        self.index.close()?;
+        Ok(())
+    }
+
     pub fn append(&mut self, record: &mut Record) -> Result<u64> {
         let mut b = BytesMut::new();
         record.encode(&mut b).with_context(|| "failed to encode")?;
