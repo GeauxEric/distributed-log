@@ -85,6 +85,20 @@ impl Log {
         Ok(s.base_offset)
     }
 
+    fn highest_offset(&self) -> Result<u64> {
+        let _l = self.lock.read().unwrap();
+        let s = self
+            .segments
+            .last()
+            .ok_or_else(|| anyhow!("empty segments"))?;
+        let off = s.next_offset;
+        if off == 0 {
+            Ok(off)
+        } else {
+            Ok(off - 1)
+        }
+    }
+
     fn close(&mut self) -> Result<()> {
         let _l = self.lock.write().unwrap();
         for s in &mut self.segments {
@@ -130,19 +144,21 @@ mod tests {
     #[test]
     fn it_works() -> Result<()> {
         let _ = env_logger::builder().is_test(true).try_init();
-        let dir = tempdir()?;
-        let mut log = Log::new(dir.path(), Config::default())?;
-        assert_eq!(1, log.segments.len());
-        assert_eq!(Some(0), log.active_segment_idx);
-        log.close()?;
-
-        let mut log = Log::new(dir.path(), Config::default())?;
-        assert_eq!(1, log.segments.len());
-        assert_eq!(Some(0), log.active_segment_idx);
-
-        test_append_and_read(&mut log)?;
-        test_out_of_range(&log)?;
-        test_init_existing(&mut log)?;
+        {
+            let dir = tempdir()?;
+            let mut log = Log::new(dir.path(), Config::default())?;
+            test_append_and_read(&mut log)?;
+        }
+        {
+            let dir = tempdir()?;
+            let log = Log::new(dir.path(), Config::default())?;
+            test_out_of_range(&log)?;
+        }
+        {
+            let dir = tempdir()?;
+            let mut log = Log::new(dir.path(), Config::default())?;
+            test_init_existing(&mut log)?;
+        }
 
         Ok(())
     }
@@ -176,8 +192,15 @@ mod tests {
         log.close()?;
         let off = log.lowest_offset()?;
         assert_eq!(0, off);
+        let off = log.highest_offset()?;
+        assert_eq!(2, off);
 
-        // TODO: highest offset
+        let log = Log::new(&log.dir, log.config.clone())?;
+        let off = log.lowest_offset()?;
+        assert_eq!(0, off);
+        let off = log.highest_offset()?;
+        assert_eq!(2, off);
+
         Ok(())
     }
 }
