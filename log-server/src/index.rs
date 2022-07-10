@@ -1,8 +1,11 @@
-use crate::config::Config;
-use log::debug;
-use memmap::MmapMut;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
+use std::path::{Path, PathBuf};
+
+use log::debug;
+use memmap::MmapMut;
+
+use crate::config::Config;
 
 const OFF_WIDTH: usize = 4;
 const POS_WIDTH: usize = 8;
@@ -10,6 +13,8 @@ pub(crate) const ENTRY_WIDTH: usize = OFF_WIDTH + POS_WIDTH;
 
 pub(crate) struct Index {
     file: File,
+    /// [`PathBuf`] of the file
+    pub(crate) file_path: Option<PathBuf>,
     size: u64,
     mmap: MmapMut,
 }
@@ -19,7 +24,17 @@ impl Index {
         let size = file.metadata()?.len();
         file.set_len(config.segment.max_index_bytes)?;
         let mmap = unsafe { MmapMut::map_mut(&file).unwrap() };
-        Ok(Index { file, size, mmap })
+        Ok(Index {
+            file,
+            file_path: None,
+            size,
+            mmap,
+        })
+    }
+
+    pub fn with_path(mut self, path: &Path) -> Self {
+        self.file_path = Some(path.to_path_buf());
+        self
     }
 
     pub fn write(&mut self, off: u32, pos: u64) -> std::io::Result<()> {
@@ -85,9 +100,11 @@ impl Drop for Index {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config::SegmentConfig;
     use tempfile::tempfile;
+
+    use crate::config::SegmentConfig;
+
+    use super::*;
 
     #[test]
     fn test_index() {

@@ -7,12 +7,12 @@ use bytes::{Bytes, BytesMut};
 use log::debug;
 use prost::Message;
 use protos::log::v1::Record;
-use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
+use std::{fs, io};
 
 pub(crate) struct Segment {
-    index: Index,
+    pub index: Index,
     pub store: Store,
     pub base_offset: u64,
     pub next_offset: u64,
@@ -21,22 +21,24 @@ pub(crate) struct Segment {
 
 impl Segment {
     pub fn new(dir: &Path, base_offset: u64, c: &Config) -> io::Result<Self> {
+        let store_file_path = dir.join(format!("{}{}", base_offset, ".store"));
         let store_file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .append(true)
             .mode(0o644)
-            .open(dir.join(format!("{}{}", base_offset, ".store")))?;
-        let store = Store::new(store_file)?;
+            .open(&store_file_path)?;
+        let store = Store::new(store_file)?.with_path(&store_file_path);
 
+        let index_file_path = dir.join(format!("{}{}", base_offset, ".index"));
         let index_file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .mode(0o644)
-            .open(dir.join(format!("{}{}", base_offset, ".index")))?;
-        let index = Index::new(index_file, c)?;
+            .open(&index_file_path)?;
+        let index = Index::new(index_file, c)?.with_path(&index_file_path);
         debug!("index_size={}", index.size());
         let next_offset = {
             if index.is_empty() {
@@ -94,6 +96,13 @@ impl Segment {
     pub fn is_maxed(&self) -> bool {
         self.store.size() >= self.config.segment.max_store_bytes
             || self.index.size() >= self.config.segment.max_index_bytes
+    }
+
+    pub fn remove(&mut self) -> Result<()> {
+        self.close()?;
+        fs::remove_file(self.index.file_path.as_ref().expect("index file path"))?;
+        fs::remove_file(self.store.file_path.as_ref().expect("store file path"))?;
+        Ok(())
     }
 }
 

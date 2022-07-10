@@ -3,14 +3,18 @@ use std::fs::File;
 use std::io;
 use std::io::{BufWriter, Read, Write};
 use std::os::unix::fs::FileExt;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 pub(crate) const LEN_WIDTH: u64 = 8;
 
 pub(crate) struct Store {
     mu: Mutex<()>,
-    file: File,                    // read
-    buf: RefCell<BufWriter<File>>, // write
+    file: File,
+    /// [`PathBuf`] of the file
+    pub(crate) file_path: Option<PathBuf>,
+    buf: RefCell<BufWriter<File>>,
+    // write
     size: u64,
 }
 
@@ -23,7 +27,13 @@ impl Store {
             file,
             buf: RefCell::new(BufWriter::new(write_fd)),
             size: m.len(),
+            file_path: None,
         })
+    }
+
+    pub fn with_path(mut self, path: &Path) -> Self {
+        self.file_path = Some(path.to_owned());
+        self
     }
 
     pub fn close(&mut self) -> anyhow::Result<()> {
@@ -88,10 +98,13 @@ impl<'a> Read for StoreReader<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::multi_reader::MultiReader;
     use std::collections::VecDeque;
+
     use tempfile::tempfile;
+
+    use crate::multi_reader::MultiReader;
+
+    use super::*;
 
     #[test]
     fn test_store() {

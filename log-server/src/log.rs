@@ -149,13 +149,30 @@ impl Log {
         }
         Box::new(mr)
     }
+
+    fn truncate(&mut self, loweset: u64) -> Result<()> {
+        let _l = self
+            .lock
+            .write()
+            .expect("acquire write lock during truncate");
+        self.segments.retain_mut(|s| {
+            if s.next_offset <= loweset + 1 {
+                s.remove().expect("remove segment");
+                false
+            } else {
+                true
+            }
+        });
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::store::LEN_WIDTH;
     use prost::Message;
     use tempfile::tempdir;
+
+    use crate::store::LEN_WIDTH;
 
     use super::*;
 
@@ -181,6 +198,13 @@ mod tests {
             let dir = tempdir()?;
             let mut log = Log::new(dir.path(), Config::default())?;
             test_reader(&mut log)?;
+        }
+        {
+            let dir = tempdir()?;
+            let mut c = Config::default();
+            c.segment.max_store_bytes = 32;
+            let mut log = Log::new(dir.path(), c)?;
+            test_truncate(&mut log)?;
         }
 
         Ok(())
@@ -236,8 +260,22 @@ mod tests {
         let mut r = log.reader();
         let mut buf = vec![];
         r.read_to_end(&mut buf)?;
-        let r2 = Record::decode(&buf[LEN_WIDTH as usize ..])?;
+        let r2 = Record::decode(&buf[LEN_WIDTH as usize..])?;
         assert_eq!(r1.value, r2.value);
+        Ok(())
+    }
+
+    fn test_truncate(log: &mut Log) -> Result<()> {
+        let mut r1 = Record {
+            value: "hello world".to_owned().into_bytes(),
+            ..Default::default()
+        };
+        for _i in 0..3 {
+            log.append(&mut r1)?;
+        }
+        log.truncate(1)?;
+        assert!(log.read(0).is_err());
+
         Ok(())
     }
 }
