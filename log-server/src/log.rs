@@ -154,7 +154,6 @@ impl Log {
 #[cfg(test)]
 mod tests {
     use crate::store::LEN_WIDTH;
-    use bytes::Bytes;
     use prost::Message;
     use tempfile::tempdir;
 
@@ -237,9 +236,7 @@ mod tests {
         let mut r = log.reader();
         let mut buf = vec![];
         r.read_to_end(&mut buf)?;
-        buf.drain(0..LEN_WIDTH as usize);
-        let bytes: Bytes = Bytes::from(buf);
-        let r2 = Record::decode(bytes)?;
+        let r2 = Record::decode(&buf[LEN_WIDTH as usize ..])?;
         assert_eq!(r1.value, r2.value);
         Ok(())
     }
