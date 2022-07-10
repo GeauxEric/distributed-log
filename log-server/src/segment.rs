@@ -13,7 +13,7 @@ use std::path::Path;
 
 pub(crate) struct Segment {
     index: Index,
-    store: Store,
+    pub store: Store,
     pub base_offset: u64,
     pub next_offset: u64,
     config: Config,

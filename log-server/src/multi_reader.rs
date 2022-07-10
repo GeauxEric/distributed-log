@@ -1,8 +1,16 @@
 use std::collections::VecDeque;
 use std::io::Read;
 
-struct MultiReader<R> {
-    inner: VecDeque<R>,
+pub(crate) struct MultiReader<R> {
+    pub(crate) inner: VecDeque<R>,
+}
+
+impl<R> Default for MultiReader<R> {
+    fn default() -> Self {
+        MultiReader {
+            inner: VecDeque::new(),
+        }
+    }
 }
 
 impl<R> Read for MultiReader<R>
@@ -44,13 +52,16 @@ mod tests {
         mr.inner.push_back(c2);
 
         let mut b1 = [0; 2];
-        for i in 0..5 {
+        for i in 0..6 {
             let n = mr.read(&mut b1).expect("read from multi-reader");
             if i < 4 {
                 assert_eq!(n, 2);
-            } 
+            }
             if i == 4 {
                 assert_eq!(n, 1);
+            }
+            if i == 5 {
+                assert_eq!(n, 0);
             }
         }
     }

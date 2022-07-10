@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fs::read_dir;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync;
 
@@ -9,7 +10,9 @@ use log::debug;
 use protos::log::v1::Record;
 
 use crate::config::Config;
+use crate::multi_reader::MultiReader;
 use crate::segment::Segment;
+use crate::store::StoreReader;
 
 struct Log {
     lock: sync::RwLock<()>,
@@ -133,10 +136,26 @@ impl Log {
 
         Ok(())
     }
+
+    fn reader(&'_ self) -> Box<dyn Read + '_> {
+        let mut mr = MultiReader::default();
+        let _l = self.lock.read().expect("fail to acquire log read lock");
+        for segment in &self.segments {
+            let sr = StoreReader {
+                store: &segment.store,
+                off: 0,
+            };
+            mr.inner.push_back(sr)
+        }
+        Box::new(mr)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::store::LEN_WIDTH;
+    use bytes::Bytes;
+    use prost::Message;
     use tempfile::tempdir;
 
     use super::*;
@@ -158,6 +177,11 @@ mod tests {
             let dir = tempdir()?;
             let mut log = Log::new(dir.path(), Config::default())?;
             test_init_existing(&mut log)?;
+        }
+        {
+            let dir = tempdir()?;
+            let mut log = Log::new(dir.path(), Config::default())?;
+            test_reader(&mut log)?;
         }
 
         Ok(())
@@ -201,6 +225,22 @@ mod tests {
         let off = log.highest_offset()?;
         assert_eq!(2, off);
 
+        Ok(())
+    }
+
+    fn test_reader(log: &mut Log) -> Result<()> {
+        let mut r1 = Record {
+            value: "hello world".to_owned().into_bytes(),
+            ..Default::default()
+        };
+        log.append(&mut r1).expect("append");
+        let mut r = log.reader();
+        let mut buf = vec![];
+        r.read_to_end(&mut buf)?;
+        buf.drain(0..LEN_WIDTH as usize);
+        let bytes: Bytes = Bytes::from(buf);
+        let r2 = Record::decode(bytes)?;
+        assert_eq!(r1.value, r2.value);
         Ok(())
     }
 }
